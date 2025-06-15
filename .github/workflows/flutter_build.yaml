@@ -1,4 +1,4 @@
-name: Flutter Multi-Platform Build
+name: Flutter Multi-Platform Build Workflow
 
 on:
   push:
