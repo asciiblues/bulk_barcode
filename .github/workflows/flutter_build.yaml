@@ -154,7 +154,7 @@ jobs:
           overwrite: false
           include-hidden-files: false
 
-  build_IOS:
+  build_ios:
     runs-on: macos-latest
 
     steps:
@@ -165,26 +165,20 @@ jobs:
         with:
           flutter-version: '3.32.4'
 
-      - name: Enable IOS support
+      - name: Enable iOS support
         run: flutter config --enable-ios
-
-      - name: Disable animation
-        run: flutter config --no-cli-animations
-
-      - name: Disable analytics
-        run: flutter config --no-analytics
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS (IPA)
-        run: flutter build ipa --release
+      - name: Build iOS for Simulator
+        run: flutter build ios --simulator
 
-      - name: Upload IOS build
+      - name: Upload iOS Simulator build
         uses: actions/upload-artifact@v4
         with:
-          name: ios-app
-          path: build/ios/ipa/
+          name: ios-simulator-app
+          path: build/ios/iphonesimulator/
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
