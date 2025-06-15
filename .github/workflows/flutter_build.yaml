@@ -72,11 +72,27 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
-      - name: Upload Windows build
+      - name: Upload Windows build portable
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
           path: build/windows/x64/runner/Release/
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Create Installer with NSIS
+        run: makensis installer.nsi
+
+      - name: Upload Windows build installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app-installer
+          path: installer\Setup.exe
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
