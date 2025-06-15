@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
+
+import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_barcodes/barcodes.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' hide Column, Row, Border;
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const MyApp());
@@ -24,8 +27,16 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Bulk Barcode Generator',
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const MyHomePage(),
+      home: Builder(builder: (_) => const MyHomePage()),
     );
+  }
+}
+
+Future<void> openLink(String url) async {
+  final Uri uri = Uri.parse(url);
+
+  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    throw 'Could not launch $url';
   }
 }
 
@@ -70,11 +81,12 @@ class _MyHomePageState extends State<MyHomePage> {
   };
 
   late Symbology _selectedSymbology = _symbologies['Code128 (Barcode)']!;
+
   Future<void> _generatePDF({required bool isPrint}) async {
     if (_dataList.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No data to generate PDF.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No data to generate PDF.')));
       return;
     }
 
@@ -82,83 +94,139 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       // ✅ Load font assets properly for all platforms
-      final fontRegularBytes = (await rootBundle.load('assets/fonts/Roboto/static/Roboto-Regular.ttf')).buffer.asUint8List();
-      final fontBoldBytes = (await rootBundle.load('assets/fonts/Roboto/static/Roboto-Bold.ttf')).buffer.asUint8List();
+      final fontRegularBytes = (await rootBundle.load(
+        'assets/fonts/Roboto/static/Roboto-Regular.ttf',
+      )).buffer.asUint8List();
+      final fontBoldBytes = (await rootBundle.load(
+        'assets/fonts/Roboto/static/Roboto-Bold.ttf',
+      )).buffer.asUint8List();
 
-      final List<Map<String, dynamic>> payload = List.generate(_dataList.length, (i) {
-        return {
-          'index': '${(i + 1)}.',
-          'data': _dataList[i],
-          'base64': (_base64Images.length > i) ? _base64Images[i] : '',
-        };
-      });
+      final List<Map<String, dynamic>> payload = List.generate(
+        _dataList.length,
+        (i) {
+          return {
+            'index': '${(i + 1)}.',
+            'data': _dataList[i],
+            'base64': (_base64Images.length > i) ? _base64Images[i] : '',
+          };
+        },
+      );
 
       // ✅ Background PDF creation using isolate
-      final pdfBytes = await compute((Map<String, dynamic> params) async {
-        final fontBytes = params['fontRegular'] as Uint8List;
-        final fontBoldBytes = params['fontBold'] as Uint8List;
-        final rawDataList = params['dataList'] as List<dynamic>;
+      final pdfBytes = await compute(
+        (Map<String, dynamic> params) async {
+          final fontBytes = params['fontRegular'] as Uint8List;
+          final fontBoldBytes = params['fontBold'] as Uint8List;
+          final rawDataList = params['dataList'] as List<dynamic>;
 
-        final pdf = pw.Document();
-        final fontRegular = pw.Font.ttf(ByteData.view(fontBytes.buffer));
-        final fontBold = pw.Font.ttf(ByteData.view(fontBoldBytes.buffer));
-        const itemsPerPage = 10;
-        final dataList = rawDataList.cast<Map<String, dynamic>>();
+          final pdf = pw.Document();
+          final fontRegular = pw.Font.ttf(ByteData.view(fontBytes.buffer));
+          final fontBold = pw.Font.ttf(ByteData.view(fontBoldBytes.buffer));
+          const itemsPerPage = 10;
+          final dataList = rawDataList.cast<Map<String, dynamic>>();
 
-        for (int pageIndex = 0; pageIndex < dataList.length; pageIndex += itemsPerPage) {
-          final pageItems = dataList.skip(pageIndex).take(itemsPerPage).toList();
+          for (
+            int pageIndex = 0;
+            pageIndex < dataList.length;
+            pageIndex += itemsPerPage
+          ) {
+            final pageItems = dataList
+                .skip(pageIndex)
+                .take(itemsPerPage)
+                .toList();
 
-          pdf.addPage(
-            pw.Page(
-              build: (context) => pw.Container(
-                padding: pw.EdgeInsets.symmetric(vertical: 3, horizontal: 12),
-                child:  pw.Column(
-                  children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(16),
-                      color: PdfColor.fromHex('#4472C4'),
-                      child: pw.Row(
-                        children: [
-                          pw.Text('Index', style: pw.TextStyle(font: fontBold, color: PdfColors.white)),
-                          pw.SizedBox(width: 20),
-                          pw.Text('Input Data', style: pw.TextStyle(font: fontBold, color: PdfColors.white)),
-                          pw.SizedBox(width: 20),
-                          pw.Text('Barcode / QR Image', style: pw.TextStyle(font: fontBold, color: PdfColors.white)),
-                        ],
-                      ),
-                    ),
-                    pw.SizedBox(height: 10),
-                    ...pageItems.map((item) {
-                      final base64Str = item['base64'] ?? '';
-                      final image = (base64Str.isNotEmpty)
-                          ? pw.Image(pw.MemoryImage(base64Decode(base64Str)), height: 80, width: 200)
-                          : pw.Text('Image Error');
-                      return pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                        child: pw.Row(
-                          children: [
-                            pw.Text(item['index'], style: pw.TextStyle(font: fontRegular)),
-                            pw.SizedBox(width: 20),
-                            pw.Expanded(child: pw.Text(item['data'], style: pw.TextStyle(font: fontRegular))),
-                            pw.SizedBox(width: 20),
-                            image,
-                          ],
+            pdf.addPage(
+              pw.Page(
+                build: (context) => pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 12,
+                  ),
+                  child: pw.Column(
+                    children: [
+                      pw.SizedBox(
+                        height: 50,
+                        child: pw.Expanded(
+                          child: pw.Container(
+                            color: PdfColor.fromHex('#4472C4'),
+                            child: pw.Row(
+                              children: [
+                                pw.SizedBox(width: 5),
+                                pw.Text(
+                                  'Index',
+                                  style: pw.TextStyle(
+                                    font: fontBold,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.SizedBox(width: 20),
+                                pw.Text(
+                                  'Input Data',
+                                  style: pw.TextStyle(
+                                    font: fontBold,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.Spacer(),
+                                pw.Text(
+                                  'Barcode / QR Image',
+                                  style: pw.TextStyle(
+                                    font: fontBold,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.SizedBox(width: 60),
+                              ],
+                            ),
+                          ),
                         ),
-                      );
-                    }).toList(),
-                  ],
-                )
+                      ),
+                      pw.SizedBox(height: 10),
+                      ...pageItems.map((item) {
+                        final base64Str = item['base64'] ?? '';
+                        final image = (base64Str.isNotEmpty)
+                            ? pw.Image(
+                                pw.MemoryImage(base64Decode(base64Str)),
+                                height: 80,
+                                width: 200,
+                              )
+                            : pw.Text('Image Error');
+                        return pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 4),
+                          child: pw.Row(
+                            children: [
+                              pw.Text(
+                                item['index'],
+                                style: pw.TextStyle(font: fontRegular),
+                              ),
+                              pw.SizedBox(width: 20),
+                              pw.Expanded(
+                                child: pw.Text(
+                                  item['data'],
+                                  style: pw.TextStyle(font: fontRegular),
+                                ),
+                              ),
+                              pw.SizedBox(width: 20),
+                              image,
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          );
-        }
+            );
+          }
 
-        return pdf.save();
-      }, {
-        'fontRegular': fontRegularBytes,
-        'fontBold': fontBoldBytes,
-        'dataList': payload,
-      });
+          return pdf.save();
+        },
+        {
+          'fontRegular': fontRegularBytes,
+          'fontBold': fontBoldBytes,
+          'dataList': payload,
+        },
+      );
 
       if (!isPrint) {
         // ✅ SAVE DIALOG works everywhere
@@ -174,34 +242,36 @@ class _MyHomePageState extends State<MyHomePage> {
         );
 
         if (filePath == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PDF save cancelled')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('PDF save cancelled')));
         } else {
           if (!isMobile) {
             final file = File(filePath);
             await file.writeAsBytes(pdfBytes);
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('PDF saved successfully!')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('PDF saved successfully!')));
         }
-      }else {
+      } else {
         try {
           await Printing.layoutPdf(
             onLayout: (PdfPageFormat format) async => pdfBytes,
           );
         } catch (e) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Printing not supported on this platform: $e")),
+            SnackBar(
+              content: Text("Printing not supported on this platform: $e"),
+            ),
           );
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating PDF: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error generating PDF: $e')));
     } finally {
       setState(() => _isGeneratingPDF = false);
     }
@@ -236,36 +306,68 @@ class _MyHomePageState extends State<MyHomePage> {
       _barcodeData.clear();
     });
 
-    // Wait for widgets to be built
-    await Future.delayed(const Duration(milliseconds: 200));
+    // Wait for widgets to build
+    await Future.delayed(const Duration(milliseconds: 500));
 
     try {
       for (var i = 0; i < _barcodeKeys.length; i++) {
-        final boundary =
-        _barcodeKeys[i].currentContext?.findRenderObject()
-        as RenderRepaintBoundary?;
-        if (boundary != null && !boundary.debugNeedsPaint) {
-          final image = await boundary.toImage(pixelRatio: 3.0);
-          final byteData = await image.toByteData(
-            format: ui.ImageByteFormat.png,
-          );
-          if (byteData != null) {
-            final base64String = base64Encode(byteData.buffer.asUint8List());
-            _base64Images.add(base64String);
-            _barcodeData.add({
-              'data': _dataList[i],
-              'base64': base64String,
-              'index': (i + 1).toString(),
-            });
+        final context = _barcodeKeys[i].currentContext;
+        if (context == null) {
+          print('⚠️ Context is null for barcode $i, skipping...');
+          continue;
+        }
+
+        final renderObject = context.findRenderObject();
+        if (renderObject is RenderRepaintBoundary) {
+          final boundary = renderObject;
+
+          // Fixed: Remove the debugNeedsPaint check as it's causing issues
+          // Wait a bit more to ensure rendering is complete
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          try {
+            final image = await boundary.toImage(pixelRatio: 3.0);
+            final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (byteData != null) {
+              final base64String = base64Encode(byteData.buffer.asUint8List());
+              _base64Images.add(base64String);
+              _barcodeData.add({
+                'data': _dataList[i],
+                'base64': base64String,
+                'index': (i + 1).toString(),
+              });
+              print('✅ Generated barcode ${i + 1}/${_dataList.length}');
+            } else {
+              print('⚠️ Failed to get byte data for barcode $i');
+            }
+          } catch (imageError) {
+            print('❌ Error converting barcode $i to image: $imageError');
+            // Continue with next barcode instead of failing completely
+            continue;
           }
+        } else {
+          print('⚠️ RenderObject is not RenderRepaintBoundary for barcode $i');
         }
       }
 
       if (_base64Images.isNotEmpty) {
-        // Example of looping through generated barcodes
-        _printBarcodeInfo();
+        _printBarcodeInfo(); // Optional logging
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Generated ${_base64Images.length} barcodes successfully!',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No barcodes were generated. Please try again.'),
+          ),
+        );
       }
-    } catch (e) {
+    } catch (e, s) {
+      print('❌ Exception while generating barcodes: $e\n$s');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error generating barcodes: $e')));
@@ -338,16 +440,18 @@ class _MyHomePageState extends State<MyHomePage> {
         final Uint8List uint8Bytes = Uint8List.fromList(bytes);
 
         // ✅ Pass them to FilePicker (required on mobile)
-        String? outputFile = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save Excel File',
-          fileName: 'barcodes_output_${now.millisecondsSinceEpoch}.xlsx',
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-          bytes: uint8Bytes,
-        ).catchError((error) {
-          print('Error in FilePicker: $error');
-          return null;
-        });
+        String? outputFile = await FilePicker.platform
+            .saveFile(
+              dialogTitle: 'Save Excel File',
+              fileName: 'barcodes_output_${now.millisecondsSinceEpoch}.xlsx',
+              type: FileType.custom,
+              allowedExtensions: ['xlsx'],
+              bytes: uint8Bytes,
+            )
+            .catchError((error) {
+              print('Error in FilePicker: $error');
+              return null;
+            });
 
         print('Selected output file path: $outputFile');
 
@@ -372,9 +476,9 @@ class _MyHomePageState extends State<MyHomePage> {
         workbook.dispose();
       } catch (e) {
         print('Error saving file: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving file: $e')));
       }
 
       print(
@@ -386,19 +490,19 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     isExported
         ? ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Generated ${_base64Images.length} barcodes successfully! Excel file saved.',
-        ),
-      ),
-    )
+            SnackBar(
+              content: Text(
+                'Generated ${_base64Images.length} barcodes successfully! Excel file saved.',
+              ),
+            ),
+          )
         : ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Generated barcodes successfully! Excel file not saved.',
-        ),
-      ),
-    );
+            const SnackBar(
+              content: Text(
+                'Generated barcodes successfully! Excel file not saved.',
+              ),
+            ),
+          );
   }
 
   // Enhanced method showing comprehensive loops with data and base64
@@ -481,25 +585,206 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Converts Excel column letter to index: A => 0, B => 1, ..., Z => 25
+  int columnLetterToIndex(String letter) {
+    letter = letter.toUpperCase();
+    int index = 0;
+    for (int i = 0; i < letter.length; i++) {
+      index *= 26;
+      index += letter.codeUnitAt(i) - 'A'.codeUnitAt(0) + 1;
+    }
+    return index - 1;
+  }
+
+  List<String> _colOrHeader = [];
+  List<List<Data?>> _rows = [];
+  Excel? _loadedExcel;
+  String selectedHeader = '';
+
+  Future<void> _readExcelFileAndShowDialog(BuildContext context) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+    );
+
+    if (result == null || result.files.single.bytes == null) {
+      setState(() {
+        dataController.text = '❌ No file selected';
+        _colOrHeader = [];
+        _rows = [];
+        _loadedExcel = null;
+      });
+      return;
+    }
+
+    try {
+      Uint8List fileBytes = result.files.single.bytes!;
+      _loadedExcel = Excel.decodeBytes(fileBytes);
+
+      if (_loadedExcel!.tables.isEmpty) {
+        setState(() {
+          dataController.text = '❌ No tables found';
+          _colOrHeader = [];
+          _rows = [];
+          _loadedExcel = null;
+        });
+        return;
+      }
+
+      var table = _loadedExcel!.tables.values.first;
+      _rows = table.rows;
+
+      if (_rows.isEmpty) {
+        setState(() {
+          dataController.text = '❌ Excel is empty';
+          _colOrHeader = [];
+          _rows = [];
+        });
+        return;
+      }
+
+      // Read header row (first row)
+      _colOrHeader = _rows[0]
+          .map((cell) => cell?.value?.toString().trim() ?? '')
+          .toList();
+      selectedHeader = _colOrHeader.isNotEmpty ? _colOrHeader[0] : '';
+
+      // Show selection dialog immediately
+      _showHeaderSelectionDialog(context);
+    } catch (e) {
+      setState(() {
+        dataController.text = '❌ Error reading Excel: $e';
+        _colOrHeader = [];
+        _rows = [];
+        _loadedExcel = null;
+      });
+    }
+  }
+
+  void _showHeaderSelectionDialog(BuildContext context) {
+    var colorScheme = Theme.of(context).colorScheme;
+    showDialog(
+      context: context,
+      builder: (_) {
+        return Dialog.fullscreen(
+          backgroundColor: colorScheme.primaryContainer,
+          child: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setDialogState) {
+              List<String> columnValues = [];
+
+              void _extractColumn(String header) {
+                int colIndex = _colOrHeader.indexOf(header);
+                columnValues = [];
+                for (int i = 1; i < _rows.length; i++) {
+                  if (colIndex < _rows[i].length) {
+                    var cell = _rows[i][colIndex];
+                    if (cell?.value != null) {
+                      columnValues.add(cell!.value.toString());
+                    }
+                  }
+                }
+              }
+
+              // Extract initially
+              _extractColumn(selectedHeader);
+
+              return Padding(
+                padding: const EdgeInsets.all(35),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select Column to Read',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    DropdownButton<String>(
+                      isExpanded: true,
+                      value: selectedHeader,
+                      icon: const Icon(Icons.table_chart),
+                      underline: Container(height: 2, color: Colors.indigo),
+                      items: _colOrHeader.map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          setDialogState(() {
+                            selectedHeader = newValue;
+                            _extractColumn(newValue);
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Preview:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: SelectableText(columnValues.join('\n')),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          dataController.text = columnValues.join('\n');
+                        });
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Read Data Column'),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("Close"),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    var height = MediaQuery.of(context).size.height;
+    var width = MediaQuery.of(context).size.width;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Bulk Barcode Generator"),
         elevation: 2,
         actions: [
+          IconButton(
+            onPressed: () async {
+              await _readExcelFileAndShowDialog(context);
+            },
+            icon: Icon(Icons.file_open_rounded),
+            tooltip: "Import Data Form Excel File",
+          ),
           _dataList.isNotEmpty
               ? IconButton(
-            onPressed: _clearAll,
-            icon: const Icon(Icons.clear_all),
-            tooltip: 'Clear All',
-          )
+                  onPressed: _clearAll,
+                  icon: const Icon(Icons.clear_all),
+                  tooltip: 'Clear All',
+                )
               : Container(),
           IconButton(
             onPressed: () {
-              //TODO: Implement file import functionality
+              // Open source code URL in browser
+              openLink('https://github.com/asciiblues/bulk_barcode');
             },
             icon: const Icon(Icons.code),
             tooltip: 'Source Code',
@@ -514,441 +799,718 @@ class _MyHomePageState extends State<MyHomePage> {
         tooltip: "Print PDF",
         child: Icon(Icons.print),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Input Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: Platform.isAndroid || Platform.isIOS
+          ? Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              child: ListView(
                 children: [
-                  const Text(
-                    'Input Configuration',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                  _generateArea(),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: dataController,
-                    decoration: const InputDecoration(
-                      labelText: 'Enter Data',
-                      hintText:
-                      'Enter your data here, separated by the chosen separator',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.data_object),
+                  _results(),
+                  const SizedBox(height: 16),
+                  _base64Results(),
+                ],
+              ),
+            )
+          : Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(width: width * 0.55, child: _generateArea()),
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: width * 0.41,
+                    child: ListView(
+                      children: [
+                        _results(),
+                        const SizedBox(height: 16),
+                        _base64Results(),
+                      ],
                     ),
-                    maxLines: 5,
-                  ),
-                  const SizedBox(height: 12),
-                  ListView(
-                    shrinkWrap: true,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: separatorController,
-                          decoration: InputDecoration(
-                            labelText: 'Separator',
-                            hintText: '\\n for newline',
-                            border: OutlineInputBorder(),
-                            suffixIcon: separatorController.text == '\\n'
-                                ? IconButton(
-                              onPressed: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (_) {
-                                    return AlertDialog(
-                                      title: const Text('Separator Help'),
-                                      content: SizedBox(
-                                        height: height * 0.33,
-                                        child: Column(
-                                          children: [
-                                            const Text(
-                                              'Use "\\n" for newline or any other character to separate data entries.\nTIP : You can use commas, semicolons, or any one character you prefer.\n\nExample:\nData1\\nData2\\nData3',
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                fontWeight:
-                                                FontWeight.w500,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            const Divider(),
-                                            const SizedBox(height: 4),
-                                            const Text(
-                                              ":), Bye!",
-                                              style: TextStyle(
-                                                fontSize: 64,
-                                                fontWeight:
-                                                FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.of(context).pop(),
-                                          child: const Text('OK'),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
-                              icon: Icon(Icons.help),
-                              tooltip: "Separator Help",
-                            )
-                                : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _symbologies.keys.firstWhere(
-                                (key) =>
-                            _symbologies[key].runtimeType ==
-                                _selectedSymbology.runtimeType,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Barcode / QR',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.qr_code),
-                          ),
-                          items: _symbologies.keys.map((String key) {
-                            return DropdownMenuItem<String>(
-                              value: key,
-                              child: Text(key),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() {
-                                _selectedSymbology = _symbologies[newValue]!;
-                              });
-                            }
-                          },
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
-          ),
+    );
+  }
 
-          const SizedBox(height: 16),
-          //Generate Button
-          SizedBox(
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed:
-              _dataList.isNotEmpty && _isGenerating || _isGeneratingPDF
-                  ? null
-                  : _generate,
-              icon: _isGenerating
-                  ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-                  : const Icon(Icons.qr_code_scanner),
-              label: Text("Generate Barcode(s) / QR code(s)"),
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Export Buttons
-          Row(
+  Widget _generateArea() {
+    var height = MediaQuery.of(context).size.height;
+    return Platform.isAndroid || Platform.isIOS
+        ? Column(
             children: [
-              Expanded(
-                child: Theme(
-                  data: ThemeData(
-                    colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-                  ),
-                  child: SizedBox(
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed:
-                      _dataList.isNotEmpty && _isGenerating ||
-                          _isGeneratingPDF
-                          ? null
-                          : _generateExcelFile,
-                      icon: _isGenerating
-                          ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : _getIconExcel(),
-                      label: Text("Export to Excel (XLSX)"),
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Input Configuration',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: dataController,
+                        decoration: const InputDecoration(
+                          labelText: 'Enter Data',
+                          hintText:
+                              'Enter your data here, separated by the chosen separator\nOr use open excel file to read data',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.data_object),
+                        ),
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 12),
+                      ListView(
+                        shrinkWrap: true,
+                        children: [
+                          TextField(
+                            controller: separatorController,
+                            decoration: InputDecoration(
+                              labelText: 'Separator',
+                              hintText: '\\n for newline',
+                              border: OutlineInputBorder(),
+                              suffixIcon: separatorController.text == '\\n'
+                                  ? IconButton(
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (_) {
+                                            return AlertDialog(
+                                              title: const Text(
+                                                'Separator Help',
+                                              ),
+                                              content: SizedBox(
+                                                height: height * 0.33,
+                                                child: Column(
+                                                  children: [
+                                                    const Text(
+                                                      'Use "\\n" for newline or any other character to separate data entries.\nTIP : You can use commas, semicolons, or any one character you prefer.\n\nExample:\nData1\\nData2\\nData3',
+                                                      style: TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    const Divider(),
+                                                    const SizedBox(height: 4),
+                                                    const Text(
+                                                      ":), Bye!",
+                                                      style: TextStyle(
+                                                        fontSize: 64,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    context,
+                                                  ).pop(),
+                                                  child: const Text('OK'),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                      icon: Icon(Icons.help),
+                                      tooltip: "Separator Help",
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: _symbologies.keys.firstWhere(
+                              (key) =>
+                                  _symbologies[key].runtimeType ==
+                                  _selectedSymbology.runtimeType,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Barcode / QR',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.qr_code),
+                            ),
+                            items: _symbologies.keys.map((String key) {
+                              return DropdownMenuItem<String>(
+                                value: key,
+                                child: Text(key),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedSymbology = _symbologies[newValue]!;
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              //Generate Button
+              SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      _dataList.isNotEmpty && _isGenerating || _isGeneratingPDF
+                      ? null
+                      : _generate,
+                  icon: _isGenerating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.qr_code_scanner),
+                  label: Text("Generate Barcode(s) / QR code(s)"),
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Theme(
-                  data: ThemeData(
-                    colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-                  ),
-                  child: SizedBox(
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed:
-                      _dataList.isNotEmpty && _isGenerating ||
-                          _isGeneratingPDF
-                          ? null
-                          : () async => await _generatePDF(isPrint: false),
-                      icon: _isGenerating
-                          ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : _isGeneratingPDF
-                          ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.picture_as_pdf),
-                      label: Text(
-                        _isGeneratingPDF
-                            ? "Generating & Exporting / Printing PDF ..."
-                            : "Export PDF",
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+              const SizedBox(height: 12),
+              // Export Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: Theme(
+                      data: ThemeData(
+                        colorScheme: ColorScheme.fromSeed(
+                          seedColor: Colors.green,
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Results Section
-          if (_dataList.isNotEmpty) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Column(
-                      children: [
-                        Text(
-                          'Generated Barcodes (${_dataList.length})',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _dataList.isEmpty ||
+                                  _isGenerating ||
+                                  _isGeneratingPDF
+                              ? null
+                              : _generateExcelFile,
+                          icon: _isGenerating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : _getIconExcel(),
+                          label: Text("Export to Excel (XLSX)"),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Theme(
+                      data: ThemeData(
+                        colorScheme: ColorScheme.fromSeed(
+                          seedColor: Colors.red,
+                        ),
+                      ),
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _dataList.isEmpty ||
+                                  _isGenerating ||
+                                  _isGeneratingPDF
+                              ? null
+                              : () async => await _generatePDF(isPrint: false),
+                          icon: _isGenerating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : _isGeneratingPDF
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.picture_as_pdf),
+                          label: Text(
+                            _isGeneratingPDF
+                                ? "Generating & Exporting / Printing PDF ..."
+                                : "Export PDF",
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          )
+        : ListView(
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Input Configuration',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: dataController,
+                        decoration: const InputDecoration(
+                          labelText: 'Enter Data',
+                          hintText:
+                              'Enter your data here, separated by the chosen separator\nOr use open excel file to read data',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.data_object),
+                        ),
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 12),
+                      ListView(
+                        shrinkWrap: true,
+                        children: [
+                          TextField(
+                            controller: separatorController,
+                            decoration: InputDecoration(
+                              labelText: 'Separator',
+                              hintText: '\\n for newline',
+                              border: OutlineInputBorder(),
+                              suffixIcon: separatorController.text == '\\n'
+                                  ? IconButton(
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (_) {
+                                            return AlertDialog(
+                                              title: const Text(
+                                                'Separator Help',
+                                              ),
+                                              content: SizedBox(
+                                                height: height * 0.33,
+                                                child: Column(
+                                                  children: [
+                                                    const Text(
+                                                      'Use "\\n" for newline or any other character to separate data entries.\nTIP : You can use commas, semicolons, or any one character you prefer.\n\nExample:\nData1\\nData2\\nData3',
+                                                      style: TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    const Divider(),
+                                                    const SizedBox(height: 4),
+                                                    const Text(
+                                                      ":), Bye!",
+                                                      style: TextStyle(
+                                                        fontSize: 64,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    context,
+                                                  ).pop(),
+                                                  child: const Text('OK'),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                      icon: Icon(Icons.help),
+                                      tooltip: "Separator Help",
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: _symbologies.keys.firstWhere(
+                              (key) =>
+                                  _symbologies[key].runtimeType ==
+                                  _selectedSymbology.runtimeType,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Barcode / QR',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.qr_code),
+                            ),
+                            items: _symbologies.keys.map((String key) {
+                              return DropdownMenuItem<String>(
+                                value: key,
+                                child: Text(key),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedSymbology = _symbologies[newValue]!;
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              //Generate Button
+              SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      _dataList.isNotEmpty && _isGenerating || _isGeneratingPDF
+                      ? null
+                      : _generate,
+                  icon: _isGenerating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.qr_code_scanner),
+                  label: Text("Generate Barcode(s) / QR code(s)"),
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Export Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: Theme(
+                      data: ThemeData(
+                        colorScheme: ColorScheme.fromSeed(
+                          seedColor: Colors.green,
+                        ),
+                      ),
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _dataList.isEmpty ||
+                                  _isGenerating ||
+                                  _isGeneratingPDF
+                              ? null
+                              : _generateExcelFile,
+                          icon: _isGenerating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : _getIconExcel(),
+                          label: Text("Export to Excel (XLSX)"),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Theme(
+                      data: ThemeData(
+                        colorScheme: ColorScheme.fromSeed(
+                          seedColor: Colors.red,
+                        ),
+                      ),
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _dataList.isEmpty ||
+                                  _isGenerating ||
+                                  _isGeneratingPDF
+                              ? null
+                              : () async => await _generatePDF(isPrint: false),
+                          icon: _isGenerating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : _isGeneratingPDF
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.picture_as_pdf),
+                          label: Text(
+                            _isGeneratingPDF
+                                ? "Generating & Exporting / Printing PDF ..."
+                                : "Export PDF",
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+  }
+
+  Widget _results() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Column(
+              children: [
+                Text(
+                  'Generated Barcodes (${_dataList.length})',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Column(
+                  children: [
+                    if (_base64Images.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _copyDataBase64Pairs,
+                        icon: const Icon(Icons.copy),
+                        label: const Text('Copy Pairs'),
+                      ),
+                    const SizedBox(height: 3),
+                    if (_base64Images.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _copyBase64ToClipboard,
+                        icon: const Icon(Icons.copy_all),
+                        label: const Text('Copy All Base64'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Using for-in loop to generate the barcode widgets
+            ...() {
+              List<Widget> barcodeWidgets = [];
+              for (var i = 0; i < _dataList.length; i++) {
+                barcodeWidgets.add(
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            if (_base64Images.isNotEmpty)
-                              TextButton.icon(
-                                onPressed: _copyDataBase64Pairs,
-                                icon: const Icon(Icons.copy),
-                                label: const Text('Copy Pairs'),
+                            Expanded(
+                              child: Text(
+                                'Item ${i + 1}: ${_dataList[i]}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            const SizedBox(height: 3),
-                            if (_base64Images.isNotEmpty)
-                              TextButton.icon(
-                                onPressed: _copyBase64ToClipboard,
-                                icon: const Icon(Icons.copy_all),
-                                label: const Text('Copy All Base64'),
+                            ),
+                            if (i < _barcodeData.length)
+                              IconButton(
+                                onPressed: () => _copyIndividualBase64(
+                                  _barcodeData[i]['base64']!,
+                                  _barcodeData[i]['data']!,
+                                ),
+                                icon: const Icon(Icons.copy, size: 20),
+                                tooltip: 'Copy Base64',
                               ),
                           ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Using for-in loop to generate the barcode widgets
-                    ...() {
-                      List<Widget> barcodeWidgets = [];
-                      for (var i = 0; i < _dataList.length; i++) {
-                        barcodeWidgets.add(
+                        const SizedBox(height: 8),
+                        RepaintBoundary(
+                          key: _barcodeKeys[i],
+                          child: Container(
+                            color: Colors.white,
+                            padding: const EdgeInsets.all(8),
+                            child: SfBarcodeGenerator(
+                              value: _dataList[i],
+                              symbology: _selectedSymbology,
+                              showValue: _showValue,
+                            ),
+                          ),
+                        ),
+                        if (i < _barcodeData.length) ...[
+                          const SizedBox(height: 8),
                           Container(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            padding: const EdgeInsets.all(12),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade300),
-                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(4),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Item ${i + 1}: ${_dataList[i]}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    if (i < _barcodeData.length)
-                                      IconButton(
-                                        onPressed: () => _copyIndividualBase64(
-                                          _barcodeData[i]['base64']!,
-                                          _barcodeData[i]['data']!,
-                                        ),
-                                        icon: const Icon(Icons.copy, size: 20),
-                                        tooltip: 'Copy Base64',
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                RepaintBoundary(
-                                  key: _barcodeKeys[i],
-                                  child: Container(
-                                    color: Colors.white,
-                                    padding: const EdgeInsets.all(8),
-                                    child: SfBarcodeGenerator(
-                                      value: _dataList[i],
-                                      symbology: _selectedSymbology,
-                                      showValue: _showValue,
-                                    ),
+                                Text(
+                                  'Input Data: "${_barcodeData[i]['data']}"',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.blue,
                                   ),
                                 ),
-                                if (i < _barcodeData.length) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade50,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Input Data: "${_barcodeData[i]['data']}"',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.blue,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          'Base64:',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        SelectableText(
-                                          _barcodeData[i]['base64']!,
-                                          style: const TextStyle(
-                                            fontFamily: 'monospace',
-                                            fontSize: 10,
-                                          ),
-                                          maxLines: 3,
-                                        ),
-                                      ],
-                                    ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Base64:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey,
                                   ),
-                                ],
+                                ),
+                                const SizedBox(height: 4),
+                                SelectableText(
+                                  _barcodeData[i]['base64']!,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 10,
+                                  ),
+                                  maxLines: 3,
+                                ),
                               ],
                             ),
                           ),
-                        );
-                      }
-                      return barcodeWidgets;
-                    }(),
-                  ],
-                ),
-              ),
-            ),
-          ],
-
-          // Base64 Output Section
-          if (_base64Images.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          "Data-Base64 Pairs Output",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: _copyDataBase64Pairs,
-                          icon: const Icon(Icons.copy_all),
-                          tooltip: 'Copy Data-Base64 Pairs',
-                        ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      height: 200,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: SingleChildScrollView(
-                        child: SelectableText(
-                              () {
-                            List<String> pairs = [];
-                            for (
-                            var i = 0;
-                            i < _dataList.length && i < _base64Images.length;
-                            i++
-                            ) {
-                              pairs.add(
-                                'Data: ${_dataList[i]}\nBase64: ${_base64Images[i]}',
-                              );
-                            }
-                            return pairs.join('\n\n---\n\n');
-                          }(),
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                );
+              }
+              return barcodeWidgets;
+            }(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _base64Results() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Data-Base64 Pairs Output",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  onPressed: _copyDataBase64Pairs,
+                  icon: const Icon(Icons.copy_all),
+                  tooltip: 'Copy Data-Base64 Pairs',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              height: 200,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  () {
+                    List<String> pairs = [];
+                    for (
+                      var i = 0;
+                      i < _dataList.length && i < _base64Images.length;
+                      i++
+                    ) {
+                      pairs.add(
+                        'Data: ${_dataList[i]}\nBase64: ${_base64Images[i]}',
+                      );
+                    }
+                    return pairs.join('\n\n---\n\n');
+                  }(),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
