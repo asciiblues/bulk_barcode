@@ -85,6 +85,9 @@ jobs:
       - name: Install NSIS
         run: choco install nsis -y
 
+      - name: Ensure installer folder exists
+        run: mkdir installer
+
       - name: Create Installer with NSIS
         run: makensis installer.nsi
 

@@ -4,5 +4,5 @@ InstallDir "$PROGRAMFILES\asciiblues\bulkbarcode"
 Section
   SetOutPath "$INSTDIR"
   File /r "build\windows\x64\runner\Release\*"
-  CreateShortCut "$DESKTOP\buckbarcode.lnk" "$INSTDIR\bulkbarcode.exe"
+  CreateShortCut "$DESKTOP\bulkbarcode.lnk" "$INSTDIR\bulkbarcode.exe"
 SectionEnd
