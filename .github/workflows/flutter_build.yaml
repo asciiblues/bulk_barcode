@@ -1,0 +1,37 @@
+name: Flutter Multi-Platform Build
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+      - main
+  pull_request:
+    branches:
+      - master
+      - develop
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.1'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: build/linux/**/release/bundle/
