@@ -13,7 +13,7 @@ on:
       - main
 
 jobs:
-  build:
+  build_linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -76,6 +76,42 @@ jobs:
         with:
           name: windows-app
           path: build/windows/x64/runner/Release/
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
+  build_android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.4'
+
+      - name : Setup JDK
+        run : sudo apt install openjdk-17-jdk
+
+      - name: Disable animation
+        run: flutter config --no-cli-animations
+
+      - name: Disable analytics
+        run: flutter config --no-analytics
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android
+        run: flutter build apk --release
+
+      - name: Upload Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-app
+          path: build/app/outputs/flutter-apk/
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
