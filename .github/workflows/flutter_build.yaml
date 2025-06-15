@@ -48,6 +48,7 @@ jobs:
         with:
           name: linux-app
           path: build/linux/**/release/bundle/
+
   build_windows:
     runs-on: windows-latest
 
@@ -121,7 +122,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - user: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -146,10 +147,9 @@ jobs:
       - name: Upload Macos build
         uses: actions/upload-artifact@v4
         with:
-          name: android-app
+          name: macos-app
           path: build/macos/Build/Products/Release
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
           include-hidden-files: false
-
