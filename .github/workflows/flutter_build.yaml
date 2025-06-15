@@ -129,7 +129,7 @@ jobs:
         with:
           flutter-version: '3.32.4'
 
-      - name: Enable macos desktop
+      - name: Enable macos support
         run: flutter config --enable-macos-desktop
 
       - name: Disable animation
@@ -149,6 +149,42 @@ jobs:
         with:
           name: macos-app
           path: build/macos/Build/Products/Release
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
+  build_IOS:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.4'
+
+      - name: Enable IOS support
+        run: flutter config --enable-ios
+
+      - name: Disable animation
+        run: flutter config --no-cli-animations
+
+      - name: Disable analytics
+        run: flutter config --no-analytics
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (IPA)
+        run: flutter build ipa --release
+
+      - name: Upload IOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: build/ios/ipa/
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
