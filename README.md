@@ -1,16 +1,28 @@
-# bulk_barcode
+# Bulk Barcode Generator
 
-Bulk Barcode Generator
+[![Flutter Multi-Platform Build Workflow](https://github.com/asciiblues/bulk_barcode/actions/workflows/flutter_build.yaml/badge.svg)](https://github.com/asciiblues/bulk_barcode/actions/workflows/flutter_build.yaml)
 
-## Getting Started
+#### A application for make barcodes / QR codes in bulk 📦
 
-This project is a starting point for a Flutter application.
+##### Screenshot of app (Windows)
 
-A few resources to get you started if this is your first Flutter project:
+<img src="https://raw.githubusercontent.com/asciiblues/bulk_barcode/refs/heads/master/image.png" alt="Screenshot 1" width="350">
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+##### Screenshot of App (Android)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+<img src="https://raw.githubusercontent.com/asciiblues/bulk_barcode/refs/heads/master/Screenshot_2025-06-20-21-16-11-232_com.example.bulk_barcode.jpg" alt="Screenshot 2" width="250"/>
+
+##### Video Of App (Windows)
+<video width="320" height="240" controls>
+  <source src="https://github.com/asciiblues/bulk_barcode/raw/refs/heads/master/Screen%20Recording%202025-06-20%20212655.mp4" type="video/mp4">
+  Video Of App (Windows)
+</video>
+
+#### Data Input / Export Options
+
+|  Data Input Options  | Data Export Options |
+| :-------------: |:-------------:|
+| Manually Type Data     | Export to Excel File    |
+| Import Form Excel File  | Export to PDF FIle   |
+| - | Print PDF Directly form App |
+
