@@ -13,7 +13,7 @@
 <img src="https://raw.githubusercontent.com/asciiblues/bulk_barcode/refs/heads/master/Screenshot_2025-06-20-21-16-11-232_com.example.bulk_barcode.jpg" alt="Screenshot 2" width="250"/>
 
 ##### Video Of App (Windows)
-<img src="https://raw.githubusercontent.com/asciiblues/bulk_barcode/refs/heads/master/Screen%20Recording%202025-06-20%20212655.gif" alt="Video of App" width="320" height="240">
+<img src="https://raw.githubusercontent.com/asciiblues/bulk_barcode/refs/heads/master/Screen%20Recording%202025-06-20%20212655.gif" alt="Video of App" width="320">
 
 #### Data Input / Export Options
 
