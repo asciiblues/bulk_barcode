@@ -40,6 +40,9 @@ Future<void> openLink(String url) async {
   }
 }
 
+int barcodes = 0;
+String barcodesText = '';
+
 ImageIcon _getIconExcel() {
   if (kIsWeb || kIsWasm) {
     return const ImageIcon(
@@ -65,6 +68,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final dataController = TextEditingController();
   final separatorController = TextEditingController(text: '\\n');
   bool isExported = false;
+  bool isCustomSprt = false;
 
   final List<GlobalKey> _barcodeKeys = [];
   List<String> _dataList = [];
@@ -74,6 +78,8 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isGeneratingPDF = false;
   bool _showValue = true;
   bool isExportedPdf = false;
+  int _generatedBarcodeOrQR = 0;
+  int _totalBarcodeOrQR = 0;
 
   final Map<String, Symbology> _symbologies = {
     'Code128 (Barcode)': Code128(),
@@ -326,8 +332,12 @@ class _MyHomePageState extends State<MyHomePage> {
           await Future.delayed(const Duration(milliseconds: 100));
 
           try {
+            int generated = i + 1;
+            int total = _dataList.length;
             final image = await boundary.toImage(pixelRatio: 3.0);
-            final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+            final byteData = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
             if (byteData != null) {
               final base64String = base64Encode(byteData.buffer.asUint8List());
               _base64Images.add(base64String);
@@ -336,7 +346,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 'base64': base64String,
                 'index': (i + 1).toString(),
               });
-              print('✅ Generated barcode ${i + 1}/${_dataList.length}');
+              print('✅ Generated barcode $generated/$total');
+              setState(() {
+                barcodes = i + 1;
+                barcodesText = 'Generated barcode ${i + 1}/${_dataList.length}';
+                _generatedBarcodeOrQR = generated;
+                _totalBarcodeOrQR = total;
+              });
             } else {
               print('⚠️ Failed to get byte data for barcode $i');
             }
@@ -546,33 +562,11 @@ class _MyHomePageState extends State<MyHomePage> {
     print('=== END OF BARCODE INFO ===');
   }
 
-  void _copyBase64ToClipboard() {
-    if (_base64Images.isNotEmpty) {
-      Clipboard.setData(ClipboardData(text: _base64Images.join('\n')));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All Base64 data copied to clipboard!')),
-      );
-    }
-  }
-
-  void _copyIndividualBase64(String base64, String data) {
-    Clipboard.setData(ClipboardData(text: base64));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Base64 for "$data" copied to clipboard!')),
-    );
-  }
-
-  void _copyDataBase64Pairs() {
-    if (_dataList.isNotEmpty && _base64Images.isNotEmpty) {
-      List<String> pairs = [];
-      for (var i = 0; i < _dataList.length && i < _base64Images.length; i++) {
-        pairs.add('Data: ${_dataList[i]}\nBase64: ${_base64Images[i]}\n---');
-      }
-      Clipboard.setData(ClipboardData(text: pairs.join('\n')));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data-Base64 pairs copied to clipboard!')),
-      );
-    }
+  void _copyBarcodeData(String data) {
+    Clipboard.setData(ClipboardData(text: data));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$data copied to clipboard!')));
   }
 
   void _clearAll() {
@@ -662,13 +656,14 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  bool isNewLine = false;
+
   void _showHeaderSelectionDialog(BuildContext context) {
-    var colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
       builder: (_) {
         return Dialog.fullscreen(
-          backgroundColor: colorScheme.primaryContainer,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           child: StatefulBuilder(
             builder: (BuildContext context, StateSetter setDialogState) {
               List<String> columnValues = [];
@@ -686,70 +681,105 @@ class _MyHomePageState extends State<MyHomePage> {
                 }
               }
 
-              // Extract initially
               _extractColumn(selectedHeader);
-
-              return Padding(
-                padding: const EdgeInsets.all(35),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Select Column to Read',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  return SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(35),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Select Column to Read',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          DropdownButton<String>(
+                            isExpanded: true,
+                            value: selectedHeader,
+                            icon: const Icon(Icons.table_chart),
+                            underline: Container(
+                              height: 2,
+                              color: Colors.indigo,
+                            ),
+                            items: _colOrHeader.map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setDialogState(() {
+                                  selectedHeader = newValue;
+                                  _extractColumn(newValue);
+                                });
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Preview:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: SelectableText(columnValues.join('\n')),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              ElevatedButton(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    dataController.text = columnValues.join(
+                                      '\n',
+                                    );
+                                    if (isNewLine) {
+                                      separator = separators.first;
+                                      separatorController.text = '\\n';
+                                      // it is not change visually
+                                    }
+                                  });
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Text('Read Data Column'),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: CheckboxListTile(
+                                  value: isNewLine,
+                                  onChanged: (bool? value) {
+                                    setDialogState(() {
+                                      isNewLine = value!;
+                                    });
+                                  },
+                                  title: const Text("Use New Line Separator"),
+                                  subtitle: Text(
+                                    "If you use New Line Separator it will not change visually in Separator Drop Down",
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text("Close"),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    DropdownButton<String>(
-                      isExpanded: true,
-                      value: selectedHeader,
-                      icon: const Icon(Icons.table_chart),
-                      underline: Container(height: 2, color: Colors.indigo),
-                      items: _colOrHeader.map((String value) {
-                        return DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        if (newValue != null) {
-                          setDialogState(() {
-                            selectedHeader = newValue;
-                            _extractColumn(newValue);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Preview:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: SelectableText(columnValues.join('\n')),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          dataController.text = columnValues.join('\n');
-                        });
-                        Navigator.of(context).pop();
-                      },
-                      child: const Text('Read Data Column'),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text("Close"),
-                    ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           ),
@@ -807,8 +837,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   _generateArea(),
                   const SizedBox(height: 16),
                   _results(),
-                  const SizedBox(height: 16),
-                  _base64Results(),
                 ],
               ),
             )
@@ -821,13 +849,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(width: 16),
                   SizedBox(
                     width: width * 0.41,
-                    child: ListView(
-                      children: [
-                        _results(),
-                        const SizedBox(height: 16),
-                        _base64Results(),
-                      ],
-                    ),
+                    child: ListView(children: [_results()]),
                   ),
                 ],
               ),
@@ -835,136 +857,171 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  List<String> separators = <String>[
+    'New Line (\\n)',
+    'Comma (,)',
+    'Semicolon (;)',
+    'vertical bar(|)',
+    'Custom',
+  ];
+  String separator = "";
+
   Widget _generateArea() {
-    var height = MediaQuery.of(context).size.height;
+    separator = separators.first;
+    setState(() {
+      separator == separators.last ? isCustomSprt = true : isCustomSprt = false;
+    });
     return Platform.isAndroid || Platform.isIOS
-        ? Column(
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Input Configuration',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: dataController,
-                        decoration: const InputDecoration(
-                          labelText: 'Enter Data',
-                          hintText:
-                              'Enter your data here, separated by the chosen separator\nOr use open excel file to read data',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.data_object),
-                        ),
-                        maxLines: 5,
-                      ),
-                      const SizedBox(height: 12),
-                      ListView(
-                        shrinkWrap: true,
-                        children: [
-                          TextField(
-                            controller: separatorController,
-                            decoration: InputDecoration(
-                              labelText: 'Separator',
-                              hintText: '\\n for newline',
-                              border: OutlineInputBorder(),
-                              suffixIcon: separatorController.text == '\\n'
-                                  ? IconButton(
-                                      onPressed: () {
-                                        showDialog(
-                                          context: context,
-                                          builder: (_) {
-                                            return AlertDialog(
-                                              title: const Text(
-                                                'Separator Help',
-                                              ),
-                                              content: SizedBox(
-                                                height: height * 0.33,
-                                                child: Column(
-                                                  children: [
-                                                    const Text(
-                                                      'Use "\\n" for newline or any other character to separate data entries.\nTIP : You can use commas, semicolons, or any one character you prefer.\n\nExample:\nData1\\nData2\\nData3',
-                                                      style: TextStyle(
-                                                        fontSize: 15,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    const Divider(),
-                                                    const SizedBox(height: 4),
-                                                    const Text(
-                                                      ":), Bye!",
-                                                      style: TextStyle(
-                                                        fontSize: 64,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.of(
-                                                    context,
-                                                  ).pop(),
-                                                  child: const Text('OK'),
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      },
-                                      icon: Icon(Icons.help),
-                                      tooltip: "Separator Help",
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            value: _symbologies.keys.firstWhere(
-                              (key) =>
-                                  _symbologies[key].runtimeType ==
-                                  _selectedSymbology.runtimeType,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Barcode / QR',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.qr_code),
-                            ),
-                            items: _symbologies.keys.map((String key) {
-                              return DropdownMenuItem<String>(
-                                value: key,
-                                child: Text(key),
-                              );
-                            }).toList(),
-                            onChanged: (String? newValue) {
-                              if (newValue != null) {
-                                setState(() {
-                                  _selectedSymbology = _symbologies[newValue]!;
-                                });
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+        ? _generateAreaMain()
+        : ListView(children: [_generateAreaMain()]);
+  }
 
-              const SizedBox(height: 16),
-              //Generate Button
-              SizedBox(
+  Widget _generateAreaMain() {
+    var height = MediaQuery.of(context).size.height;
+    var colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Input Configuration',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: dataController,
+                  decoration: const InputDecoration(
+                    labelText: 'Enter Data',
+                    hintText:
+                        'Enter your data here, separated by the chosen separator\nOr use open excel file to read data',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.data_object),
+                  ),
+                  maxLines: 5,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField(
+                  value: separator,
+                  decoration: const InputDecoration(
+                    labelText: 'Separator',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: separators.map((String value) {
+                    return DropdownMenuItem(value: value, child: Text(value));
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        separator = newValue;
+                        switch (newValue) {
+                          case 'New Line (\\n)':
+                            separatorController.text = "\\n";
+                            break;
+                          case 'Comma (,)':
+                            separatorController.text = ',';
+                            break;
+                          case 'Semicolon (;)':
+                            separatorController.text = ';';
+                            break;
+                          case 'vertical bar(|)':
+                            separatorController.text = '|';
+                            break;
+                          default:
+                            showDialog(
+                              context: context,
+                              builder: (_) {
+                                return StatefulBuilder(
+                                  builder: (context, setInnerState) {
+                                    TextEditingController temp_sprt =
+                                        TextEditingController();
+                                    return AlertDialog(
+                                      title: Text("Custom Separator"),
+                                      content: SizedBox(
+                                        height: height * 0.10,
+                                        child: Column(
+                                          children: [
+                                            TextField(
+                                              controller: temp_sprt,
+                                              decoration: InputDecoration(
+                                                labelText: 'Separator',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: Text("Cancel"),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () {
+                                            if (temp_sprt.text.isNotEmpty) {
+                                              setInnerState(() {
+                                                separatorController.text =
+                                                    temp_sprt.text;
+                                                separator = temp_sprt.text;
+                                              });
+                                            }
+                                            Navigator.pop(context);
+                                          },
+                                          child: Text('Done'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                        }
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _symbologies.keys.firstWhere(
+                    (key) =>
+                        _symbologies[key].runtimeType ==
+                        _selectedSymbology.runtimeType,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Barcode / QR',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.qr_code),
+                  ),
+                  items: _symbologies.keys.map((String key) {
+                    return DropdownMenuItem<String>(
+                      value: key,
+                      child: Text(key),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        _selectedSymbology = _symbologies[newValue]!;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        //Generate Button
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
                 height: 50,
                 child: ElevatedButton.icon(
                   onPressed:
@@ -986,336 +1043,98 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              // Export Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: Theme(
-                      data: ThemeData(
-                        colorScheme: ColorScheme.fromSeed(
-                          seedColor: Colors.green,
-                        ),
-                      ),
-                      child: SizedBox(
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed:
-                              _dataList.isEmpty ||
-                                  _isGenerating ||
-                                  _isGeneratingPDF
-                              ? null
-                              : _generateExcelFile,
-                          icon: _isGenerating
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : _getIconExcel(),
-                          label: Text("Export to Excel (XLSX)"),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Theme(
-                      data: ThemeData(
-                        colorScheme: ColorScheme.fromSeed(
-                          seedColor: Colors.red,
-                        ),
-                      ),
-                      child: SizedBox(
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed:
-                              _dataList.isEmpty ||
-                                  _isGenerating ||
-                                  _isGeneratingPDF
-                              ? null
-                              : () async => await _generatePDF(isPrint: false),
-                          icon: _isGenerating
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : _isGeneratingPDF
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.picture_as_pdf),
-                          label: Text(
-                            _isGeneratingPDF
-                                ? "Generating & Exporting / Printing PDF ..."
-                                : "Export PDF",
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          )
-        : ListView(
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Input Configuration',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: dataController,
-                        decoration: const InputDecoration(
-                          labelText: 'Enter Data',
-                          hintText:
-                              'Enter your data here, separated by the chosen separator\nOr use open excel file to read data',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.data_object),
-                        ),
-                        maxLines: 5,
-                      ),
-                      const SizedBox(height: 12),
-                      ListView(
-                        shrinkWrap: true,
-                        children: [
-                          TextField(
-                            controller: separatorController,
-                            decoration: InputDecoration(
-                              labelText: 'Separator',
-                              hintText: '\\n for newline',
-                              border: OutlineInputBorder(),
-                              suffixIcon: separatorController.text == '\\n'
-                                  ? IconButton(
-                                      onPressed: () {
-                                        showDialog(
-                                          context: context,
-                                          builder: (_) {
-                                            return AlertDialog(
-                                              title: const Text(
-                                                'Separator Help',
-                                              ),
-                                              content: SizedBox(
-                                                height: height * 0.33,
-                                                child: Column(
-                                                  children: [
-                                                    const Text(
-                                                      'Use "\\n" for newline or any other character to separate data entries.\nTIP : You can use commas, semicolons, or any one character you prefer.\n\nExample:\nData1\\nData2\\nData3',
-                                                      style: TextStyle(
-                                                        fontSize: 15,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    const Divider(),
-                                                    const SizedBox(height: 4),
-                                                    const Text(
-                                                      ":), Bye!",
-                                                      style: TextStyle(
-                                                        fontSize: 64,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.of(
-                                                    context,
-                                                  ).pop(),
-                                                  child: const Text('OK'),
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      },
-                                      icon: Icon(Icons.help),
-                                      tooltip: "Separator Help",
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            value: _symbologies.keys.firstWhere(
-                              (key) =>
-                                  _symbologies[key].runtimeType ==
-                                  _selectedSymbology.runtimeType,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Barcode / QR',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.qr_code),
-                            ),
-                            items: _symbologies.keys.map((String key) {
-                              return DropdownMenuItem<String>(
-                                value: key,
-                                child: Text(key),
-                              );
-                            }).toList(),
-                            onChanged: (String? newValue) {
-                              if (newValue != null) {
-                                setState(() {
-                                  _selectedSymbology = _symbologies[newValue]!;
-                                });
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Export Buttons
+        Row(
+          children: [
+            Expanded(
+              child: Theme(
+                data: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-              //Generate Button
-              SizedBox(
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed:
-                      _dataList.isNotEmpty && _isGenerating || _isGeneratingPDF
-                      ? null
-                      : _generate,
-                  icon: _isGenerating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.qr_code_scanner),
-                  label: Text("Generate Barcode(s) / QR code(s)"),
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        _dataList.isEmpty || _isGenerating || _isGeneratingPDF
+                        ? null
+                        : _generateExcelFile,
+                    icon: _isGenerating
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : _getIconExcel(),
+                    label: Text("Export to Excel (XLSX)"),
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              // Export Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: Theme(
-                      data: ThemeData(
-                        colorScheme: ColorScheme.fromSeed(
-                          seedColor: Colors.green,
-                        ),
-                      ),
-                      child: SizedBox(
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed:
-                              _dataList.isEmpty ||
-                                  _isGenerating ||
-                                  _isGeneratingPDF
-                              ? null
-                              : _generateExcelFile,
-                          icon: _isGenerating
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : _getIconExcel(),
-                          label: Text("Export to Excel (XLSX)"),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Theme(
+                data: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+                ),
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        _dataList.isEmpty || _isGenerating || _isGeneratingPDF
+                        ? null
+                        : () async => await _generatePDF(isPrint: false),
+                    icon: _isGenerating
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : _isGeneratingPDF
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.picture_as_pdf),
+                    label: Text(
+                      _isGeneratingPDF
+                          ? "Generating & Exporting / Printing PDF ..."
+                          : "Export PDF",
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Theme(
-                      data: ThemeData(
-                        colorScheme: ColorScheme.fromSeed(
-                          seedColor: Colors.red,
-                        ),
-                      ),
-                      child: SizedBox(
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed:
-                              _dataList.isEmpty ||
-                                  _isGenerating ||
-                                  _isGeneratingPDF
-                              ? null
-                              : () async => await _generatePDF(isPrint: false),
-                          icon: _isGenerating
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : _isGeneratingPDF
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.picture_as_pdf),
-                          label: Text(
-                            _isGeneratingPDF
-                                ? "Generating & Exporting / Printing PDF ..."
-                                : "Export PDF",
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ],
-          );
+            ),
+          ],
+        ),
+        if(_dataList.isNotEmpty)... [
+        SizedBox(height: 7.5),
+        Divider(),
+        SizedBox(height: 7.5),
+          Container(
+            decoration: BoxDecoration(color: colorScheme.primaryContainer),
+            child: ItemProgressBar(
+              current: _generatedBarcodeOrQR,
+              total: _totalBarcodeOrQR,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _results() {
@@ -1333,24 +1152,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Column(
-                  children: [
-                    if (_base64Images.isNotEmpty)
-                      TextButton.icon(
-                        onPressed: _copyDataBase64Pairs,
-                        icon: const Icon(Icons.copy),
-                        label: const Text('Copy Pairs'),
-                      ),
-                    const SizedBox(height: 3),
-                    if (_base64Images.isNotEmpty)
-                      TextButton.icon(
-                        onPressed: _copyBase64ToClipboard,
-                        icon: const Icon(Icons.copy_all),
-                        label: const Text('Copy All Base64'),
-                      ),
-                  ],
-                ),
+                const SizedBox(height: 5),
               ],
             ),
             const SizedBox(height: 16),
@@ -1382,12 +1184,9 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                             if (i < _barcodeData.length)
                               IconButton(
-                                onPressed: () => _copyIndividualBase64(
-                                  _barcodeData[i]['base64']!,
-                                  _barcodeData[i]['data']!,
-                                ),
+                                onPressed: () => _copyBarcodeData(_dataList[i]),
                                 icon: const Icon(Icons.copy, size: 20),
-                                tooltip: 'Copy Base64',
+                                tooltip: 'Copy Barcode Data',
                               ),
                           ],
                         ),
@@ -1395,6 +1194,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         RepaintBoundary(
                           key: _barcodeKeys[i],
                           child: Container(
+                            height: 125,
                             color: Colors.white,
                             padding: const EdgeInsets.all(8),
                             child: SfBarcodeGenerator(
@@ -1404,48 +1204,6 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                           ),
                         ),
-                        if (i < _barcodeData.length) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Input Data: "${_barcodeData[i]['data']}"',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Base64:',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                SelectableText(
-                                  _barcodeData[i]['base64']!,
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 10,
-                                  ),
-                                  maxLines: 3,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -1458,59 +1216,44 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+}
 
-  Widget _base64Results() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Data-Base64 Pairs Output",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                IconButton(
-                  onPressed: _copyDataBase64Pairs,
-                  icon: const Icon(Icons.copy_all),
-                  tooltip: 'Copy Data-Base64 Pairs',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              height: 200,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  () {
-                    List<String> pairs = [];
-                    for (
-                      var i = 0;
-                      i < _dataList.length && i < _base64Images.length;
-                      i++
-                    ) {
-                      pairs.add(
-                        'Data: ${_dataList[i]}\nBase64: ${_base64Images[i]}',
-                      );
-                    }
-                    return pairs.join('\n\n---\n\n');
-                  }(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
+class ItemProgressBar extends StatelessWidget {
+  final int current;
+  final int total;
+
+  const ItemProgressBar({
+    super.key,
+    required this.current,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (total == 0) ? 0.0 : current / total;
+
+    return Padding(
+      padding: EdgeInsets.all(0.75),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: progress),
+            duration: Duration(milliseconds: 370),
+            builder: (context, value, child) {
+              return LinearProgressIndicator(
+                value: value,
+                minHeight: 8,
+                color: current == total ? Colors.green[800] : Theme.of(context).colorScheme.primary,
+              );
+            },
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '$current / $total',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF757575)),
+          ),
+        ],
       ),
     );
   }
