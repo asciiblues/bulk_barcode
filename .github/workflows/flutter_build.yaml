@@ -57,12 +57,11 @@ jobs:
           name: linux-app
           path: build/linux/**/release/bundle/
 
-      - name: Upload to GitHub Release (public)
+      - name: Upload Linux GitHub Release (public)
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            bulk_barcode.tar.gz
-            release_notes/README.md
+          files: bulk_barcode.tar.gz
+          body_path: release_notes/README.md
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
@@ -89,7 +88,13 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
-      - name: Upload Windows build portable
+      - name: Install 7Zip
+        run: choco install 7zip.install
+
+      - name: Build Zip Archive
+        run: 7z a bulk_barcode_windows_portable.zip -tzip build/windows/x64/runner/Release/
+
+      - name: Upload Windows build portable (debugging)
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
@@ -98,6 +103,14 @@ jobs:
           compression-level: 6
           overwrite: false
           include-hidden-files: false
+
+      - name: Upload Windows Portable GitHub Release (public)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bulk_barcode_windows_portable.zip
+          body_path: release_notes/README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Install NSIS
         run: choco install nsis -y
@@ -108,7 +121,7 @@ jobs:
       - name: Create Installer with NSIS
         run: makensis installer.nsi
 
-      - name: Upload Windows build installer
+      - name: Upload Windows build installer (debugging)
         uses: actions/upload-artifact@v4
         with:
           name: windows-app-installer
@@ -117,6 +130,14 @@ jobs:
           compression-level: 6
           overwrite: false
           include-hidden-files: false
+
+      - name: Upload Windows Installer GitHub Release (public)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/
+          body_path: release_notes/README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
   build_android:
     runs-on: ubuntu-latest
@@ -144,7 +165,7 @@ jobs:
       - name: Build Android
         run: flutter build apk --release
 
-      - name: Upload Android build
+      - name: Upload Android build (debugging)
         uses: actions/upload-artifact@v4
         with:
           name: android-app
@@ -153,6 +174,14 @@ jobs:
           compression-level: 6
           overwrite: false
           include-hidden-files: false
+
+      - name: Upload Android GitHub Release (public)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          body_path: release_notes/README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
   build_macos:
     runs-on: macos-latest
@@ -180,6 +209,9 @@ jobs:
       - name: Build Macos
         run: flutter build macos --release
 
+      - name: Making MacOS Build Zip
+        run: zip -r bulk_barcode_macos.zip build/macos/Build/Products/Release/
+
       - name: Upload Macos build
         uses: actions/upload-artifact@v4
         with:
@@ -189,3 +221,11 @@ jobs:
           compression-level: 6
           overwrite: false
           include-hidden-files: false
+
+      - name: Upload MacOS GitHub Release (public)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bulk_barcode_macos.zip
+          body_path: release_notes/README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
