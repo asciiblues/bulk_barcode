@@ -134,7 +134,7 @@ jobs:
       - name: Upload Windows Installer GitHub Release (public)
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/
+          files: dist/Bulk_Barcode_Setup.exe
           body_path: release_notes/README.md
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}

@@ -1,11 +1,10 @@
 ## Bulk Barcode Generator Release
-#### Version :- 1.1.1
+#### Version :- 1.1.2
 #### It is the initial public release
 
-#### Bug Fixed (2)
+#### Bug Fixed (1)
 ```
-1. New Line Separator CheckBox Tile Is in Column [ Import Data Form Excel ] 
-2. Export To Excel (XLSX) is Now Export To Excel to avoid Text Overflow in small screens
+1. Added Windows Installer Public Release
 ```
 
 #### Available Platforms
