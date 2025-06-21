@@ -735,42 +735,34 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              ElevatedButton(
-                                onPressed: () {
-                                  setDialogState(() {
-                                    dataController.text = columnValues.join(
-                                      '\n',
-                                    );
-                                    if (isNewLine) {
-                                      separator = separators.first;
-                                      separatorController.text = '\\n';
-                                      // it is not change visually
-                                    }
-                                  });
-                                  Navigator.of(context).pop();
-                                },
-                                child: const Text('Read Data Column'),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: CheckboxListTile(
-                                  value: isNewLine,
-                                  onChanged: (bool? value) {
-                                    setDialogState(() {
-                                      isNewLine = value!;
-                                    });
-                                  },
-                                  title: const Text("Use New Line Separator"),
-                                  subtitle: Text(
-                                    "If you use New Line Separator it will not change visually in Separator Drop Down",
-                                  ),
-                                ),
-                              ),
-                            ],
+                          ElevatedButton(
+                            onPressed: () {
+                              setDialogState(() {
+                                dataController.text = columnValues.join('\n');
+                                if (isNewLine) {
+                                  separator = separators.first;
+                                  separatorController.text = '\\n';
+                                  // it is not change visually
+                                }
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            child: const Text('Read Data Column'),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
+                      CheckboxListTile(
+                              value: isNewLine,
+                              onChanged: (bool? value) {
+                                setDialogState(() {
+                                  isNewLine = value!;
+                                });
+                              },
+                              title: const Text("Use New Line Separator"),
+                              subtitle: Text(
+                                "If you use New Line Separator it will not change visually in Separator Drop Down",
+                              ),
+                            ),
+                          const SizedBox(height: 12),
                           OutlinedButton(
                             onPressed: () => Navigator.of(context).pop(),
                             child: const Text("Close"),
@@ -1069,7 +1061,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : _getIconExcel(),
-                    label: Text("Export to Excel (XLSX)"),
+                    label: Text("Export to Excel"),
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -1121,10 +1113,10 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ],
         ),
-        if(_dataList.isNotEmpty)... [
-        SizedBox(height: 7.5),
-        Divider(),
-        SizedBox(height: 7.5),
+        if (_dataList.isNotEmpty) ...[
+          SizedBox(height: 7.5),
+          Divider(),
+          SizedBox(height: 7.5),
           Container(
             decoration: BoxDecoration(color: colorScheme.primaryContainer),
             child: ItemProgressBar(
@@ -1239,12 +1231,14 @@ class ItemProgressBar extends StatelessWidget {
         children: [
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.0, end: progress),
-            duration: Duration(milliseconds: 370),
+            duration: Duration(milliseconds: 375),
             builder: (context, value, child) {
               return LinearProgressIndicator(
                 value: value,
                 minHeight: 8,
-                color: current == total ? Colors.green[800] : Theme.of(context).colorScheme.primary,
+                color: current == total
+                    ? Colors.green[800]
+                    : Theme.of(context).colorScheme.primary,
               );
             },
           ),
