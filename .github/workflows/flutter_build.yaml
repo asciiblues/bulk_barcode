@@ -44,7 +44,7 @@ jobs:
         run: flutter build linux
 
       - name: Install tar
-        run: apt install tar -y
+        run: sudo apt install tar -y
 
       - name: Build tar.gz archive
         run: tar -zcvf bulk_barcode.tar.gz build/linux/**/release/bundle/**
