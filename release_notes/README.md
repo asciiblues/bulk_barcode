@@ -1,10 +1,16 @@
 ## Bulk Barcode Generator Release
-#### Version :- 1.1.2
-#### It is the initial public release
+#### Version :- 1.1.3
+#### It is the third release of Bulk Barcode With New MUI for Win Installer and License
 
-#### Bug Fixed (1)
+#### Bug Fixed (0)
 ```
-1. Added Windows Installer Public Release
+-
+```
+
+#### Added Future (1) 
+```
+1. Modern UI for Windows Installer
+2. License 
 ```
 
 #### Available Platforms
