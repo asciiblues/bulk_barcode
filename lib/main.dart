@@ -750,18 +750,18 @@ class _MyHomePageState extends State<MyHomePage> {
                             child: const Text('Read Data Column'),
                           ),
                           const SizedBox(height: 12),
-                      CheckboxListTile(
-                              value: isNewLine,
-                              onChanged: (bool? value) {
-                                setDialogState(() {
-                                  isNewLine = value!;
-                                });
-                              },
-                              title: const Text("Use New Line Separator"),
-                              subtitle: Text(
-                                "If you use New Line Separator it will not change visually in Separator Drop Down",
-                              ),
+                          CheckboxListTile(
+                            value: isNewLine,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                isNewLine = value!;
+                              });
+                            },
+                            title: const Text("Use New Line Separator"),
+                            subtitle: Text(
+                              "If you use New Line Separator it will not change visually in Separator Drop Down",
                             ),
+                          ),
                           const SizedBox(height: 12),
                           OutlinedButton(
                             onPressed: () => Navigator.of(context).pop(),
@@ -774,6 +774,58 @@ class _MyHomePageState extends State<MyHomePage> {
                 },
               );
             },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String> _readLicense() async {
+    try {
+      return await rootBundle.loadString('assets/LICENSE.txt');
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  void _openLicense() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog.fullscreen(
+          backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              const Text(
+                "LICENSE",
+                style: TextStyle(fontSize: 30.0, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: FutureBuilder<String>(
+                  future: _readLicense(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    } else if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    } else {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(16.0),
+                        child: SelectableText(snapshot.data ?? ''),
+                      );
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Close"),
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
         );
       },
@@ -795,6 +847,11 @@ class _MyHomePageState extends State<MyHomePage> {
             },
             icon: Icon(Icons.file_open_rounded),
             tooltip: "Import Data Form Excel File",
+          ),
+          IconButton(
+            onPressed: () => _openLicense(),
+            icon: Icon(Icons.attach_money),
+            tooltip: "LICENSE",
           ),
           _dataList.isNotEmpty
               ? IconButton(
