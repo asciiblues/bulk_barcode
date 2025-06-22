@@ -735,6 +735,19 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                           ),
                           const SizedBox(height: 16),
+                          CheckboxListTile(
+                            value: isNewLine,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                isNewLine = value!;
+                              });
+                            },
+                            title: const Text("Use New Line Separator"),
+                            subtitle: Text(
+                              "If you use New Line Separator it will not change visually in Separator Drop Down",
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           ElevatedButton(
                             onPressed: () {
                               setDialogState(() {
@@ -748,19 +761,6 @@ class _MyHomePageState extends State<MyHomePage> {
                               Navigator.of(context).pop();
                             },
                             child: const Text('Read Data Column'),
-                          ),
-                          const SizedBox(height: 12),
-                          CheckboxListTile(
-                            value: isNewLine,
-                            onChanged: (bool? value) {
-                              setDialogState(() {
-                                isNewLine = value!;
-                              });
-                            },
-                            title: const Text("Use New Line Separator"),
-                            subtitle: Text(
-                              "If you use New Line Separator it will not change visually in Separator Drop Down",
-                            ),
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton(
