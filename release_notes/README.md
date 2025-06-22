@@ -1,16 +1,15 @@
 ## Bulk Barcode Generator Release
-#### Version :- 1.1.3
-#### It is the third release of Bulk Barcode With New MUI for Win Installer and License
+#### Version :- 1.1.4
+#### It is the fourth release of Bulk Barcode With 1 fixed 
 
 #### Bug Fixed (0)
 ```
--
+1. Fixed 'Use New Line Separator' CheckBoxTile before 'Read Data Column' Button in Import data form Excel File
 ```
 
 #### Added Future (1) 
 ```
-1. Modern UI for Windows Installer
-2. License 
+- 
 ```
 
 #### Available Platforms
