@@ -5,9 +5,9 @@ git branch
 git tag
 
 # Delete tag locally and remotely if necessary
-git tag -d v1.1.4
-git push origin :refs/tags/v1.1.4
+git tag -d v1.1.5
+git push origin :refs/tags/v1.1.5
 
 # Re-create tag at current commit
-git tag -a v1.1.4 -m "✓ Fixed 'Use New Line Separator' CheckBoxTile before 'Read Data Column' Button"
-git push origin v1.1.4
+git tag -a v1.1.5 -m "+ Added space for barcode/ QR separator. "
+git push origin v1.1.5

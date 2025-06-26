@@ -4,7 +4,7 @@
 ; Definitions
 ; =========================
 !define APP_NAME "Bulk_Barcode"
-!define VERSION "Release_1.1.4"
+!define VERSION "Release_1.1.5"
 !define INSTALLER_NAME "${APP_NAME}_Setup.exe"
 !define OUT_DIR "dist"
 

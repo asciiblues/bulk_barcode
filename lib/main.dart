@@ -911,6 +911,7 @@ class _MyHomePageState extends State<MyHomePage> {
     'Comma (,)',
     'Semicolon (;)',
     'vertical bar(|)',
+    'Space ( )',
     'Custom',
   ];
   String separator = "";
@@ -979,6 +980,9 @@ class _MyHomePageState extends State<MyHomePage> {
                             break;
                           case 'vertical bar(|)':
                             separatorController.text = '|';
+                            break;
+                          case 'Space ( )':
+                            separatorController.text = ' ';
                             break;
                           default:
                             showDialog(

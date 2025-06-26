@@ -2,6 +2,8 @@
 
 [![Flutter Multi-Platform Build Workflow](https://github.com/asciiblues/bulk_barcode/actions/workflows/flutter_build.yaml/badge.svg)](https://github.com/asciiblues/bulk_barcode/actions/workflows/flutter_build.yaml)
 
+[![License: MIT / Apache-2.0 / BSD-3-Clause / Syncfusion](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0%20%2F%20BSD--3--Clause%20%2F%20Syncfusion-blue)](./LICENSE.md)
+
 #### A application for make barcodes / QR codes in bulk 📦
 
 ##### Screenshot of app (Windows)
