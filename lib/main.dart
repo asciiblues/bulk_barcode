@@ -86,7 +86,55 @@ class _MyHomePageState extends State<MyHomePage> {
     'QRCode': QRCode(),
   };
 
+  Future<ui.Image> _captureImage(GlobalKey key) async {
+    int attempts = 0;
+    const maxAttempts = 5;
+    const delay = Duration(milliseconds: 300);
+
+    while (attempts < maxAttempts) {
+      try {
+        final context = key.currentContext;
+        if (context == null) {
+          await Future.delayed(delay);
+          attempts++;
+          continue;
+        }
+
+        final boundary = context.findRenderObject() as RenderRepaintBoundary?;
+        if (boundary == null || boundary.debugNeedsPaint) {
+          await Future.delayed(delay);
+          attempts++;
+          continue;
+        }
+
+        return await boundary.toImage(pixelRatio: 3.0);
+      } catch (_) {
+        await Future.delayed(delay);
+        attempts++;
+      }
+    }
+
+    throw Exception('Failed to capture image after $maxAttempts attempts');
+  }
+
   late Symbology _selectedSymbology = _symbologies['Code128 (Barcode)']!;
+
+  Future<void> _waitUntilRendered(GlobalKey key) async {
+    int retries = 0;
+    const maxRetries = 10;
+    while (retries < maxRetries) {
+      final context = key.currentContext;
+      final renderObject = context?.findRenderObject();
+      if (context != null &&
+          renderObject is RenderRepaintBoundary &&
+          !renderObject.debugNeedsPaint) {
+        return;
+      }
+      await Future.delayed(Duration(milliseconds: 100));
+      retries++;
+    }
+  }
+
 
   Future<void> _generatePDF({required bool isPrint}) async {
     if (_dataList.isEmpty) {
@@ -107,20 +155,29 @@ class _MyHomePageState extends State<MyHomePage> {
         'assets/fonts/Roboto/static/Roboto-Bold.ttf',
       )).buffer.asUint8List();
 
+      // 🔧 FIXED: Ensure we have the same number of images as data
       final List<Map<String, dynamic>> payload = List.generate(
         _dataList.length,
-        (i) {
+            (i) {
           return {
             'index': '${(i + 1)}.',
             'data': _dataList[i],
-            'base64': (_base64Images.length > i) ? _base64Images[i] : '',
+            'base64': (i < _base64Images.length && _base64Images[i].isNotEmpty)
+                ? _base64Images[i]
+                : '',
           };
         },
       );
 
-      // ✅ Background PDF creation using isolate
+      print('🔍 Debug: Creating PDF payload with ${payload.length} items');
+      for (int i = 0; i < payload.length; i++) {
+        final hasImage = payload[i]['base64'].toString().isNotEmpty;
+        print('Item ${i + 1}: "${payload[i]['data']}" - Image: ${hasImage ? "✅" : "❌"}');
+      }
+
+      // ✅ Background PDF creation using isolate - FIXED PAGINATION LOGIC
       final pdfBytes = await compute(
-        (Map<String, dynamic> params) async {
+            (Map<String, dynamic> params) async {
           final fontBytes = params['fontRegular'] as Uint8List;
           final fontBoldBytes = params['fontBold'] as Uint8List;
           final rawDataList = params['dataList'] as List<dynamic>;
@@ -131,93 +188,193 @@ class _MyHomePageState extends State<MyHomePage> {
           const itemsPerPage = 10;
           final dataList = rawDataList.cast<Map<String, dynamic>>();
 
-          for (
-            int pageIndex = 0;
-            pageIndex < dataList.length;
-            pageIndex += itemsPerPage
-          ) {
-            final pageItems = dataList
-                .skip(pageIndex)
-                .take(itemsPerPage)
-                .toList();
+          // 🔧 FIXED: Calculate total pages needed
+          final totalPages = (dataList.length / itemsPerPage).ceil();
+
+          print('📊 PDF Info: ${dataList.length} items, $totalPages pages, $itemsPerPage items per page');
+
+          // 🔧 FIXED: Use proper page iteration
+          for (int pageNumber = 0; pageNumber < totalPages; pageNumber++) {
+            final startIndex = pageNumber * itemsPerPage;
+            final endIndex = (startIndex + itemsPerPage > dataList.length)
+                ? dataList.length
+                : startIndex + itemsPerPage;
+
+            final pageItems = dataList.sublist(startIndex, endIndex);
+
+            print('📄 Page ${pageNumber + 1}: Items ${startIndex + 1} to $endIndex (${pageItems.length} items)');
 
             pdf.addPage(
               pw.Page(
+                pageFormat: PdfPageFormat.a4,
                 build: (context) => pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(
-                    vertical: 16,
-                    horizontal: 12,
-                  ),
+                  padding: pw.EdgeInsets.zero,
                   child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.SizedBox(
-                        height: 50,
-                        child: pw.Expanded(
-                          child: pw.Container(
-                            color: PdfColor.fromHex('#4472C4'),
-                            child: pw.Row(
-                              children: [
-                                pw.SizedBox(width: 5),
-                                pw.Text(
-                                  'Index',
-                                  style: pw.TextStyle(
-                                    font: fontBold,
-                                    color: PdfColors.white,
-                                  ),
+                      // Header
+                      pw.Container(
+                        height: 40,
+                        width: double.infinity,
+                        color: PdfColor.fromHex('#4472C4'),
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: pw.Row(
+                          children: [
+                            pw.Container(
+                              width: 60,
+                              child: pw.Text(
+                                'Index',
+                                style: pw.TextStyle(
+                                  font: fontBold,
+                                  color: PdfColors.white,
+                                  fontSize: 10,
                                 ),
-                                pw.SizedBox(width: 20),
-                                pw.Text(
-                                  'Input Data',
-                                  style: pw.TextStyle(
-                                    font: fontBold,
-                                    color: PdfColors.white,
-                                  ),
-                                ),
-                                pw.Spacer(),
-                                pw.Text(
-                                  'Barcode / QR Image',
-                                  style: pw.TextStyle(
-                                    font: fontBold,
-                                    color: PdfColors.white,
-                                  ),
-                                ),
-                                pw.SizedBox(width: 60),
-                              ],
+                              ),
                             ),
-                          ),
+                            pw.Container(
+                              width: 180,
+                              child: pw.Text(
+                                'Input Data',
+                                style: pw.TextStyle(
+                                  font: fontBold,
+                                  color: PdfColors.white,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            pw.Expanded(
+                              child: pw.Text(
+                                'Barcode / QR Image',
+                                style: pw.TextStyle(
+                                  font: fontBold,
+                                  color: PdfColors.white,
+                                  fontSize: 10,
+                                ),
+                                textAlign: pw.TextAlign.center,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      pw.SizedBox(height: 10),
-                      ...pageItems.map((item) {
-                        final base64Str = item['base64'] ?? '';
-                        final image = (base64Str.isNotEmpty)
-                            ? pw.Image(
-                                pw.MemoryImage(base64Decode(base64Str)),
-                                height: 80,
-                                width: 200,
-                              )
-                            : pw.Text('Image Error');
-                        return pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                          child: pw.Row(
-                            children: [
-                              pw.Text(
-                                item['index'],
-                                style: pw.TextStyle(font: fontRegular),
+                      pw.SizedBox(height: 4),
+
+                      // Data rows
+                      ...pageItems.asMap().entries.map((entry) {
+                        final itemIndex = entry.key;
+                        final item = entry.value;
+                        final actualIndex = startIndex + itemIndex + 1;
+
+                        final base64Str = item['base64']?.toString() ?? '';
+
+                        pw.Widget image;
+                        try {
+                          if (base64Str.isNotEmpty) {
+                            final imageBytes = base64Decode(base64Str);
+                            image = pw.Container(
+                              width: 180,
+                              height: 60,
+                              child: pw.Image(
+                                pw.MemoryImage(imageBytes),
+                                fit: pw.BoxFit.contain,
                               ),
-                              pw.SizedBox(width: 20),
-                              pw.Expanded(
+                            );
+                          } else {
+                            image = pw.Container(
+                              width: 180,
+                              height: 60,
+                              decoration: pw.BoxDecoration(
+                                border: pw.Border.all(color: PdfColors.red),
+                              ),
+                              child: pw.Center(
                                 child: pw.Text(
-                                  item['data'],
-                                  style: pw.TextStyle(font: fontRegular),
+                                  'No Image',
+                                  style: pw.TextStyle(
+                                    font: fontRegular,
+                                    color: PdfColors.red,
+                                    fontSize: 8,
+                                  ),
                                 ),
                               ),
-                              pw.SizedBox(width: 20),
+                            );
+                          }
+                        } catch (e) {
+                          image = pw.Container(
+                            width: 180,
+                            height: 60,
+                            decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: PdfColors.red),
+                            ),
+                            child: pw.Center(
+                              child: pw.Text(
+                                'Image Error',
+                                style: pw.TextStyle(
+                                  font: fontRegular,
+                                  color: PdfColors.red,
+                                  fontSize: 8,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return pw.Container(
+                          margin: const pw.EdgeInsets.only(bottom: 2),
+                          padding: const pw.EdgeInsets.all(2),
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: PdfColors.grey300),
+                          ),
+                          child: pw.Row(
+                            crossAxisAlignment: pw.CrossAxisAlignment.center,
+                            children: [
+                              pw.Container(
+                                width: 60,
+                                child: pw.Text(
+                                  '$actualIndex.',
+                                  style: pw.TextStyle(
+                                    font: fontRegular,
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ),
+                              pw.Container(
+                                width: 180,
+                                child: pw.Text(
+                                  item['data']?.toString() ?? '',
+                                  style: pw.TextStyle(
+                                    font: fontRegular,
+                                    fontSize: 9,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: pw.TextOverflow.clip,
+                                ),
+                              ),
+                              pw.SizedBox(width: 10),
                               image,
                             ],
                           ),
                         );
                       }).toList(),
+
+                      // Spacer to push footer down
+                      pw.Spacer(),
+
+                      // Footer
+                      pw.Container(
+                        padding: const pw.EdgeInsets.only(top: 2),
+                        child: pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.center,
+                          children: [
+                            pw.Text(
+                              'Page ${pageNumber + 1} of $totalPages',
+                              style: pw.TextStyle(
+                                font: fontRegular,
+                                fontSize: 8,
+                                color: PdfColors.grey600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -225,6 +382,7 @@ class _MyHomePageState extends State<MyHomePage> {
             );
           }
 
+          print('✅ PDF generated with $totalPages pages for ${dataList.length} items');
           return pdf.save();
         },
         {
@@ -275,6 +433,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
     } catch (e) {
+      print('❌ PDF Generation Error: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error generating PDF: $e')));
@@ -287,9 +446,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (dataController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Please enter some data to generate barcodes / QR codes',
-          ),
+          content: Text('Please enter some data to generate barcodes / QR codes'),
         ),
       );
       return;
@@ -298,9 +455,7 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _isGenerating = true;
       final rawText = dataController.text;
-      final separator = separatorController.text == '\\n'
-          ? '\n'
-          : separatorController.text;
+      final separator = separatorController.text == '\\n' ? '\n' : separatorController.text;
       _dataList = rawText
           .split(separator)
           .map((e) => e.trim())
@@ -312,81 +467,137 @@ class _MyHomePageState extends State<MyHomePage> {
       _barcodeData.clear();
     });
 
-    // Wait for widgets to build
+    print('🚀 Starting barcode generation for ${_dataList.length} items');
+
+    // Allow the UI to rebuild before capturing
     await Future.delayed(const Duration(milliseconds: 500));
 
-    try {
-      for (var i = 0; i < _barcodeKeys.length; i++) {
-        final context = _barcodeKeys[i].currentContext;
-        if (context == null) {
-          print('⚠️ Context is null for barcode $i, skipping...');
-          continue;
+    Future<void> _waitUntilRendered(GlobalKey key) async {
+      int retries = 0;
+      const maxRetries = 15; // Increased retries
+      while (retries < maxRetries) {
+        final context = key.currentContext;
+        final renderObject = context?.findRenderObject();
+        if (context != null &&
+            renderObject is RenderRepaintBoundary &&
+            !renderObject.debugNeedsPaint) {
+          return;
         }
+        await Future.delayed(const Duration(milliseconds: 100));
+        retries++;
+      }
+      throw Exception('Widget not rendered after $maxRetries attempts');
+    }
 
-        final renderObject = context.findRenderObject();
-        if (renderObject is RenderRepaintBoundary) {
-          final boundary = renderObject;
+    Future<ui.Image> _captureImage(GlobalKey key) async {
+      int attempts = 0;
+      const maxAttempts = 8; // Increased attempts
+      const delay = Duration(milliseconds: 200); // Reduced delay
 
-          // Fixed: Remove the debugNeedsPaint check as it's causing issues
-          // Wait a bit more to ensure rendering is complete
-          await Future.delayed(const Duration(milliseconds: 100));
-
-          try {
-            int generated = i + 1;
-            int total = _dataList.length;
-            final image = await boundary.toImage(pixelRatio: 3.0);
-            final byteData = await image.toByteData(
-              format: ui.ImageByteFormat.png,
-            );
-            if (byteData != null) {
-              final base64String = base64Encode(byteData.buffer.asUint8List());
-              _base64Images.add(base64String);
-              _barcodeData.add({
-                'data': _dataList[i],
-                'base64': base64String,
-                'index': (i + 1).toString(),
-              });
-              print('✅ Generated barcode $generated/$total');
-              setState(() {
-                barcodes = i + 1;
-                barcodesText = 'Generated barcode ${i + 1}/${_dataList.length}';
-                _generatedBarcodeOrQR = generated;
-                _totalBarcodeOrQR = total;
-              });
-            } else {
-              print('⚠️ Failed to get byte data for barcode $i');
-            }
-          } catch (imageError) {
-            print('❌ Error converting barcode $i to image: $imageError');
-            // Continue with next barcode instead of failing completely
+      while (attempts < maxAttempts) {
+        try {
+          final context = key.currentContext;
+          if (context == null) {
+            print('  ⏳ Attempt ${attempts + 1}: Context is null, waiting...');
+            await Future.delayed(delay);
+            attempts++;
             continue;
           }
-        } else {
-          print('⚠️ RenderObject is not RenderRepaintBoundary for barcode $i');
+
+          final boundary = context.findRenderObject() as RenderRepaintBoundary?;
+          if (boundary == null) {
+            print('  ⏳ Attempt ${attempts + 1}: Boundary is null, waiting...');
+            await Future.delayed(delay);
+            attempts++;
+            continue;
+          }
+
+          if (boundary.debugNeedsPaint) {
+            print('  ⏳ Attempt ${attempts + 1}: Boundary needs paint, waiting...');
+            await Future.delayed(delay);
+            attempts++;
+            continue;
+          }
+
+          print('  ✅ Attempt ${attempts + 1}: Capturing image...');
+          return await boundary.toImage(pixelRatio: 3.0);
+        } catch (e) {
+          print('  ❌ Attempt ${attempts + 1}: Error capturing image: $e');
+          await Future.delayed(delay);
+          attempts++;
         }
       }
 
-      if (_base64Images.isNotEmpty) {
-        _printBarcodeInfo(); // Optional logging
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Generated ${_base64Images.length} barcodes successfully!',
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No barcodes were generated. Please try again.'),
-          ),
-        );
+      throw Exception('Failed to capture image after $maxAttempts attempts');
+    }
+
+    try {
+      // Process barcodes sequentially for better reliability
+      for (var i = 0; i < _barcodeKeys.length; i++) {
+        print('📱 Processing barcode ${i + 1}/${_dataList.length}: "${_dataList[i]}"');
+
+        try {
+          // Wait for the widget to be rendered
+          await _waitUntilRendered(_barcodeKeys[i]);
+
+          // Add a small delay for mobile devices
+          if (Platform.isAndroid || Platform.isIOS) {
+            await Future.delayed(const Duration(milliseconds: 150));
+          }
+
+          // Capture the image
+          final image = await _captureImage(_barcodeKeys[i]);
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+          String base64String = '';
+          if (byteData != null) {
+            base64String = base64Encode(byteData.buffer.asUint8List());
+            print('  ✅ Image captured: ${base64String.length} bytes');
+          } else {
+            print('  ⚠️ Byte data is null for barcode $i');
+          }
+
+          _base64Images.add(base64String);
+          _barcodeData.add({
+            'data': _dataList[i],
+            'base64': base64String,
+            'index': (i + 1).toString(),
+          });
+
+          setState(() {
+            barcodes = i + 1;
+            barcodesText = 'Generated barcode ${i + 1}/${_dataList.length}';
+            _generatedBarcodeOrQR = i + 1;
+            _totalBarcodeOrQR = _dataList.length;
+          });
+
+          // Additional delay for mobile devices
+          if (Platform.isAndroid || Platform.isIOS) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+
+        } catch (e) {
+          print('❌ Failed to generate barcode $i: $e');
+          _base64Images.add('');
+          _barcodeData.add({
+            'data': _dataList[i],
+            'base64': '',
+            'index': (i + 1).toString(),
+          });
+        }
       }
-    } catch (e, s) {
-      print('❌ Exception while generating barcodes: $e\n$s');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error generating barcodes: $e')));
+
+      // 🔧 FIXED: Call _printBarcodeInfo AFTER all barcodes are generated
+      _printBarcodeInfo();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Generated ${_base64Images.where((img) => img.isNotEmpty).length}/${_base64Images.length} barcodes successfully.')),
+      );
+    } catch (e) {
+      print('❌ Exception during generation: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating barcodes: $e')),
+      );
     }
 
     setState(() {
@@ -523,43 +734,35 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // Enhanced method showing comprehensive loops with data and base64
   void _printBarcodeInfo() {
-    print('=== Barcode Generation Complete ===');
-    print('Total barcodes generated: ${_dataList.length}');
+    print('=== 📊 FINAL BARCODE GENERATION SUMMARY ===');
+    print('Total data items: ${_dataList.length}');
+    print('Total base64 images: ${_base64Images.length}');
+    print('Total barcode data objects: ${_barcodeData.length}');
+
+    final successfulImages = _base64Images.where((img) => img.isNotEmpty).length;
+    final failedImages = _base64Images.length - successfulImages;
+    print('Successful images: $successfulImages');
+    print('Failed images: $failedImages');
     print('');
 
-    // Method 1: Loop using for-in with enumerate-like functionality
-    print('Method 1: Using for-in loop with asMap().entries');
-    for (var entry in _dataList.asMap().entries) {
-      var index = entry.key;
-      var inputData = entry.value;
-      var base64 = index < _base64Images.length
-          ? _base64Images[index]
-          : 'Not generated';
+    // Detailed breakdown
+    print('📋 DETAILED BREAKDOWN:');
+    for (var i = 0; i < _dataList.length; i++) {
+      final inputData = _dataList[i];
+      final hasBase64 = i < _base64Images.length && _base64Images[i].isNotEmpty;
+      final base64Length = i < _base64Images.length ? _base64Images[i].length : 0;
 
-      print('Barcode #${index + 1}:');
-      print('  Input Data: "$inputData"');
-      print('  Base64 Length: ${base64.length} characters');
-      print('  Base64: ${base64.substring(0, 50)}...');
-      print('  ----------------------------------------');
-    }
-    print('');
-
-    // List all input data
-    print('\nAll Input Data:');
-    for (var data in _dataList) {
-      print('- "$data"');
+      print('Item ${i + 1}:');
+      print('  📝 Data: "$inputData"');
+      print('  🖼️  Image: ${hasBase64 ? "✅ Success" : "❌ Failed"}');
+      print('  📏 Base64 Length: $base64Length characters');
+      if (hasBase64 && base64Length > 50) {
+        print('  🔍 Base64 Preview: ${_base64Images[i].substring(0, 50)}...');
+      }
+      print('  ${"-" * 40}');
     }
 
-    // List all base64 (truncated for readability)
-    print('\nAll Base64 Images (first 50 chars):');
-    for (var i = 0; i < _base64Images.length; i++) {
-      var truncated = _base64Images[i].length > 50
-          ? '${_base64Images[i].substring(0, 50)}...'
-          : _base64Images[i];
-      print('Base64 #${i + 1}: $truncated');
-    }
-
-    print('=== END OF BARCODE INFO ===');
+    print('=== 🏁 END OF BARCODE GENERATION SUMMARY ===');
   }
 
   void _copyBarcodeData(String data) {
